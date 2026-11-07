@@ -1,0 +1,8 @@
+[project]
+name = "bounty-scout"
+version = "0.1.0"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+bounty-scout = "bounty_scout.__main__:main"
