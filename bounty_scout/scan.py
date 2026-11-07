@@ -36,6 +36,34 @@ def github_get(path, token=None, timeout=20):
         return json.loads(r.read(5_000_001))
 
 
+MAINTAINER = ('OWNER', 'MEMBER', 'COLLABORATOR')
+AMOUNT = re.compile(r'\$\s?([0-9][0-9,]*(?:\.[0-9]+)?)')
+APPLY = re.compile(r'(^|\s)/attempt\b|i(\'| a)m working on|i would like to work|can i work|assign (it|this) to me|let me (take|work)', re.I)
+
+
+def _when(value):
+    try:
+        t = dt.datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        return t if t.tzinfo else None
+    except ValueError:
+        return None
+
+
+def gate(row, now, fresh_days=21, confirm_days=7, max_agents=2):
+    """Failed anti-waste conditions; empty = worth a PR."""
+    failed = []
+    if not (row.get('reward_usd') or 0) > 0 or not row['funding_verified']:
+        failed.append('no verified cash reward')
+    listed, confirmed = _when(row.get('listed_at')), _when(row.get('maintainer_confirmed_at'))
+    if not ((listed and (now - listed).days <= fresh_days) or (confirmed and (now - confirmed).days <= confirm_days)):
+        failed.append('stale listing')
+    if row['competing_prs'] != 0:
+        failed.append('competing PR')
+    if row['agent_applicants'] > max_agents:
+        failed.append('crowded by other applicants')
+    return failed
+
+
 # Accounts whose comment proves an active, funded bounty on that platform.
 OFFICIAL_BOTS = {'algora': frozenset({'algora-pbc[bot]'})}
 
@@ -93,6 +121,11 @@ def scan(platforms=tuple(PLATFORMS), token=None, get=github_get, now=None, days=
                 bots = OFFICIAL_BOTS.get(platform, frozenset())
                 official = next((c for c in funding if (c.get('user') or {}).get('login') in bots), None)
                 chosen = official or funding[-1]
+                amount = AMOUNT.search(str((official or {}).get('body', '')))
+                maint = [c for c in comments if isinstance(c, dict) and c.get('author_association') in MAINTAINER
+                         and re.search(r'bount|reward|still (open|available)|funded', str(c.get('body', '')), re.I)]
+                applicants = {(c.get('user') or {}).get('login') for c in comments if isinstance(c, dict)
+                              and c.get('author_association') not in MAINTAINER and APPLY.search(str(c.get('body', '')))}
                 pause()
                 competing = get('/search/issues?' + urllib.parse.urlencode({'q': f'repo:{full} is:pr is:open {number}'}), token).get('total_count')
                 pause()
@@ -103,10 +136,14 @@ def scan(platforms=tuple(PLATFORMS), token=None, get=github_get, now=None, days=
                        'funding_comment': chosen.get('html_url'), 'funding_by': (chosen.get('user') or {}).get('login'),
                        'funding_verified': official is not None,
                        'competing_prs': competing if isinstance(competing, int) else None,
-                       'merge_proof': (proof or {}).get('html_url')}
-                if row['competing_prs']:
+                       'merge_proof': (proof or {}).get('html_url'),
+                       'reward_usd': float(amount.group(1).replace(',', '')) if amount else None,
+                       'listed_at': it.get('created_at'), 'maintainer_confirmed_at': max((c.get('created_at') for c in maint), default=None),
+                       'agent_applicants': len(applicants - {None}), 'submission_fee': 0}
+                row['gate_failed'] = gate(row, now)
+                if row['competing_prs'] or row['agent_applicants'] > 2:
                     row['verdict'] = 'crowded'
-                elif row['funding_verified'] and row['merge_proof'] and row['competing_prs'] == 0:
+                elif not row['gate_failed'] and row['merge_proof']:
                     row['verdict'] = 'verified_ready'
                 else:
                     row['verdict'] = 'candidate'

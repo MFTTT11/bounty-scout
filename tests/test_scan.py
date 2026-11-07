@@ -15,7 +15,8 @@ def make_get(search_pages):
             page = int(path.rsplit('page=', 1)[1])
             return {'items': search_pages[page - 1] if page <= len(search_pages) else []}
         if path.startswith('/repos/acme/app/issues/1/comments'):
-            return [{'body': 'Bounty https://algora.io/acme/bounties/1', 'html_url': A + '#issuecomment-1', 'user': {'login': 'algora-pbc[bot]'}}]
+            return [{'body': 'Bounty $250 https://algora.io/acme/bounties/1', 'html_url': A + '#issuecomment-1', 'user': {'login': 'algora-pbc[bot]'}},
+                    {'body': '/attempt #1', 'user': {'login': 'agent-x'}, 'author_association': 'NONE'}]
         if path.startswith('/repos/acme/app/issues/2/comments'):
             return [{'body': 'see algora.io for a bounty', 'html_url': B + '#issuecomment-2', 'user': {'login': 'random-user'}}]
         if path.startswith('/repos/other/lib/issues/3/comments'):
@@ -30,11 +31,17 @@ def make_get(search_pages):
 
 class ScanTest(unittest.TestCase):
     def test_only_official_bot_is_verified_and_link_only_is_candidate(self):
-        get = make_get([[{'html_url': B}, {'html_url': A}]])
+        get = make_get([[{'html_url': B, 'created_at': '2026-11-01T00:00:00Z'}, {'html_url': A, 'created_at': '2026-11-01T00:00:00Z'}]])
         rows, errors = scan(('algora',), get=get, now=NOW, pause=lambda: None, limit=2, pages=1)
         self.assertEqual(errors, [])
         self.assertEqual([(r['issue'], r['verdict']) for r in rows], [(A, 'verified_ready'), (B, 'candidate')])
         self.assertGreater(rows[0]['score'], rows[1]['score'])
+        self.assertEqual((rows[0]['reward_usd'], rows[0]['agent_applicants'], rows[0]['gate_failed']), (250.0, 1, []))
+
+    def test_stale_listing_is_not_ready(self):
+        get = make_get([[{'html_url': A, 'created_at': '2020-01-01T00:00:00Z'}]])
+        rows, _ = scan(('algora',), get=get, now=NOW, pause=lambda: None, limit=1, pages=1)
+        self.assertEqual((rows[0]['verdict'], rows[0]['gate_failed']), ('candidate', ['stale listing']))
 
     def test_pagination_dedupe_and_error_isolation(self):
         get = make_get([[{'html_url': A}, {'html_url': C}], [{'html_url': A}, {'html_url': B}]])
