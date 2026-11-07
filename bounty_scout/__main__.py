@@ -26,7 +26,7 @@ def main(argv=None):
         print(json.dumps({'results': rows, 'errors': errors}, indent=2))
     else:
         for r in rows:
-            print(f"{r['verdict']:<10} {r['platform']:<17} competing={r['competing_prs']} {r['issue']}  {r['title']}")
+            print(f"{r['score']:.2f} {r['verdict']:<14} {r['platform']:<17} competing={r['competing_prs']} {r['issue']}  {r['title']}")
         for e in errors:
             print('error:', e, file=sys.stderr)
     return 0

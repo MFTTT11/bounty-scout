@@ -8,7 +8,7 @@ For each issue it checks, with the GitHub API only:
 - **competition** — open PRs in the repository that mention the issue number
 - **merge proof** — a PR by someone other than the owner merged in the last 30 days
 
-Verdicts: `ready` (funded, merge proof, no competing PR), `quiet_repo`, `crowded`. Always confirm the amount and payout terms on the platform page before starting.
+Verdicts: `verified_ready` (funding comment by the platform's official bot such as `algora-pbc[bot]`, merge proof, no competing PR), `candidate` (only a platform link or missing proof — not verified), `crowded`. Results are ranked by proven payment × completability × low competition, not by the claimed amount. Always confirm the amount and payout terms on the platform page before starting.
 
 ```bash
 GITHUB_TOKEN=... python3 -m bounty_scout

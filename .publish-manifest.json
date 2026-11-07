@@ -1,0 +1,14 @@
+{
+  "managed_by": "MFTTT11 release workflow",
+  "files": [
+    "FUNDING.json",
+    "LICENSE",
+    "README.md",
+    "bounty_scout/__init__.py",
+    "bounty_scout/__main__.py",
+    "bounty_scout/scan.py",
+    "pyproject.toml",
+    "tests/__init__.py",
+    "tests/test_scan.py"
+  ]
+}
