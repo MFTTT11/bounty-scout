@@ -23,6 +23,7 @@ import urllib.request
 PLATFORMS = {
     'lightningbounties': 'app.lightningbounties.com',
     'bountyhub': 'bountyhub.dev',
+    'opire': 'app.opire.dev',
     'algora': 'algora.io',
 }
 ISSUE = re.compile(r'https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)/issues/([0-9]+)\Z')
@@ -65,7 +66,10 @@ def gate(row, now, fresh_days=21, confirm_days=7, max_agents=2):
 
 
 # Accounts whose comment proves an active, funded bounty on that platform.
-OFFICIAL_BOTS = {'algora': frozenset({'algora-pbc[bot]'})}
+OFFICIAL_BOTS = {
+    'algora': frozenset({'algora-pbc[bot]'}),
+    'opire': frozenset({'opirebot', 'opire[bot]'}),
+}
 
 
 def _paged(get, path, token, pages, key=None, per_page=100):
@@ -96,7 +100,7 @@ def scan(platforms=tuple(PLATFORMS), token=None, get=github_get, now=None, days=
          pause=lambda: time.sleep(2.2)):
     now = now or dt.datetime.now(dt.timezone.utc)
     since = (now - dt.timedelta(days=days)).date().isoformat()
-    results, errors, seen = [], [], set()
+    results, errors, seen, merge_cache = [], [], set(), {}
     for platform in platforms:
         domain = PLATFORMS[platform]
         q = urllib.parse.urlencode({'q': f'"{domain}" in:comments is:issue is:open', 'sort': 'updated'})
@@ -128,10 +132,13 @@ def scan(platforms=tuple(PLATFORMS), token=None, get=github_get, now=None, days=
                               and c.get('author_association') not in MAINTAINER and APPLY.search(str(c.get('body', '')))}
                 pause()
                 competing = get('/search/issues?' + urllib.parse.urlencode({'q': f'repo:{full} is:pr is:open {number}'}), token).get('total_count')
-                pause()
-                merged = get('/search/issues?' + urllib.parse.urlencode(
-                    {'q': f'repo:{full} is:pr is:merged merged:>={since} -author:{owner}', 'per_page': 1}), token)
-                proof = (merged.get('items') or [None])[0]
+                repo_key = full.casefold()
+                if repo_key not in merge_cache:
+                    pause()
+                    merged = get('/search/issues?' + urllib.parse.urlencode(
+                        {'q': f'repo:{full} is:pr is:merged merged:>={since} -author:{owner}', 'per_page': 1}), token)
+                    merge_cache[repo_key] = (merged.get('items') or [None])[0]
+                proof = merge_cache[repo_key]
                 row = {'platform': platform, 'issue': m.group(0), 'title': str(it.get('title', ''))[:120],
                        'funding_comment': chosen.get('html_url'), 'funding_by': (chosen.get('user') or {}).get('login'),
                        'funding_verified': official is not None,

@@ -50,6 +50,29 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn('issues/3', errors[0])
 
+    def test_opire_bot_verified_and_merge_proof_cached_per_repo(self):
+        merged_calls = {'n': 0}
+
+        def opire_get(path, token):
+            if path.startswith('/search/issues') and 'in%3Acomments' in path:
+                return {'items': [{'html_url': A, 'created_at': '2026-11-02T00:00:00Z'},
+                                  {'html_url': B, 'created_at': '2026-11-02T00:00:00Z'}]}
+            if path.startswith('/repos/acme/app/issues/1/comments'):
+                return [{'body': 'Reward $75 at https://app.opire.dev/issues/1', 'html_url': A + '#issuecomment-1', 'user': {'login': 'opirebot'}}]
+            if path.startswith('/repos/acme/app/issues/2/comments'):
+                return [{'body': 'Reward $50 at https://app.opire.dev/issues/2', 'html_url': B + '#issuecomment-2', 'user': {'login': 'opire[bot]'}}]
+            if 'is%3Aopen' in path:
+                return {'total_count': 0}
+            if 'is%3Amerged' in path:
+                merged_calls['n'] += 1
+                return {'items': [{'html_url': 'https://github.com/acme/app/pull/9'}]}
+            raise AssertionError(path)
+
+        rows, errors = scan(('opire',), get=opire_get, now=NOW, pause=lambda: None, limit=5, pages=1)
+        self.assertEqual(errors, [])
+        self.assertEqual([r['verdict'] for r in rows], ['verified_ready', 'verified_ready'])
+        self.assertEqual(merged_calls['n'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()
