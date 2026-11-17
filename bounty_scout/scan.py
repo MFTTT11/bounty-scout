@@ -103,7 +103,7 @@ def scan(platforms=tuple(PLATFORMS), token=None, get=github_get, now=None, days=
     results, errors, seen, merge_cache = [], [], set(), {}
     for platform in platforms:
         domain = PLATFORMS[platform]
-        q = urllib.parse.urlencode({'q': f'"{domain}" in:comments is:issue is:open', 'sort': 'updated'})
+        q = urllib.parse.urlencode({'q': f'"{domain}" in:comments is:issue is:open', 'sort': 'created', 'order': 'desc'})
         try:
             pause()
             items = _paged(get, '/search/issues?' + q, token, pages, key='items', per_page=limit)
@@ -112,6 +112,8 @@ def scan(platforms=tuple(PLATFORMS), token=None, get=github_get, now=None, days=
             continue
         for it in items:
             try:  # one broken issue must not stop the scan
+                if it.get('assignee') or it.get('assignees'):
+                    continue
                 m = ISSUE.fullmatch(str(it.get('html_url', '')))
                 if not m or m.group(0) in seen:
                     continue

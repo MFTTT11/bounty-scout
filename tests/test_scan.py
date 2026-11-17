@@ -73,6 +73,32 @@ class ScanTest(unittest.TestCase):
         self.assertEqual([r['verdict'] for r in rows], ['verified_ready', 'verified_ready'])
         self.assertEqual(merged_calls['n'], 1)
 
+    def test_skips_assigned_issues_and_sorts_by_created_desc(self):
+        seen_paths = []
+
+        def fake_get(path, token):
+            seen_paths.append(path)
+            if path.startswith('/search/issues') and 'in%3Acomments' in path:
+                return {'items': [
+                    {'html_url': A, 'created_at': '2026-11-02T00:00:00Z', 'assignee': {'login': 'someone'}},
+                    {'html_url': B, 'created_at': '2026-11-02T00:00:00Z', 'assignees': []},
+                ]}
+            if path.startswith('/repos/acme/app/issues/1/comments'):
+                raise AssertionError('assigned issue must be skipped before comment fetch')
+            if path.startswith('/repos/acme/app/issues/2/comments'):
+                return [{'body': 'Bounty $50 https://algora.io/acme/bounties/2', 'html_url': B + '#issuecomment-2', 'user': {'login': 'algora-pbc[bot]'}}]
+            if 'is%3Aopen' in path:
+                return {'total_count': 0}
+            if 'is%3Amerged' in path:
+                return {'items': [{'html_url': 'https://github.com/acme/app/pull/9'}]}
+            raise AssertionError(path)
+
+        rows, errors = scan(('algora',), get=fake_get, now=NOW, pause=lambda: None, limit=5, pages=1)
+        self.assertEqual(errors, [])
+        self.assertEqual([r['issue'] for r in rows], [B])
+        self.assertIn('sort=created', seen_paths[0])
+        self.assertIn('order=desc', seen_paths[0])
+
 
 if __name__ == '__main__':
     unittest.main()
